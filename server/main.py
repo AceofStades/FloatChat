@@ -1,19 +1,20 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
-import xarray as xr
 import pandas as pd
+import xarray as xr
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
-# Import the new and updated functions
-from app.processing import get_schema_from_dataframe, nc_to_dataframe
-from app.database import store_to_sqlite, execute_sql_query
-from app.visualizations import map_html
 from app.ai_core import (
     VectorDB,
     classify_intent,
     generate_chitchat_response,
     llm_nlp_to_sql,
 )
+from app.database import execute_sql_query, store_to_sqlite
+
+# Import the new and updated functions
+from app.processing import get_schema_from_dataframe, nc_to_dataframe
+from app.visualizations import generate_chart_html, map_html
 
 # --- Application Setup (Unchanged) ---
 app = FastAPI(title="FloatChat Conversational AI API")
@@ -75,15 +76,16 @@ async def upload_data(file: UploadFile = File(...)):
 
 @app.post("/chatbot-response")
 async def chatbot_response(query: str = Form(...)):
-    if not data_loaded:
-        return JSONResponse(
-            content={
-                "message": "Please upload a file before asking questions about the data."
-            }
-        )
-
     intent_result = classify_intent(query)
     intent = intent_result.get("intent", "chitchat")
+
+    if not data_loaded and intent in ["metadata_query", "data_query"]:
+        print(f"🔍 Intent: {intent} (But no data loaded)")
+        prompt = f"The user asked: '{query}'. However, no NetCDF data file is uploaded yet. Friendly and nicely explain that you need them to upload a data file first so you can help them with this specific question. Do not answer their data question, just ask for the file."
+        chitchat_response = generate_chitchat_response(
+            prompt, data_loaded=False, columns=[]
+        )
+        return StreamingResponse(chitchat_response, media_type="text/event-stream")
 
     # --- MODIFIED: Simplified and corrected metadata logic ---
     if intent == "metadata_query":
@@ -102,7 +104,7 @@ async def chatbot_response(query: str = Form(...)):
         if df_results.empty:
             return JSONResponse(content={"message": "I found no data for that query."})
 
-        if "map" in query.lower():
+        if "map" in query.lower() or "location" in query.lower():
             try:
                 map_content = map_html(df_results)
                 return HTMLResponse(content=map_content, media_type="text/html")
@@ -111,6 +113,18 @@ async def chatbot_response(query: str = Form(...)):
                     content={
                         "message": f"Could not generate a map. The data might be missing latitude/longitude columns. Error: {e}"
                     }
+                )
+        elif (
+            "graph" in query.lower()
+            or "chart" in query.lower()
+            or "plot" in query.lower()
+        ):
+            try:
+                chart_content = generate_chart_html(df_results)
+                return HTMLResponse(content=chart_content, media_type="text/html")
+            except Exception as e:
+                return JSONResponse(
+                    content={"message": f"Could not generate a chart. Error: {e}"}
                 )
         else:
             return JSONResponse(
@@ -122,5 +136,7 @@ async def chatbot_response(query: str = Form(...)):
             )
     else:  # Handles 'chitchat'
         print(f"Intent: Chitchat")
-        chitchat_response = generate_chitchat_response(query)
-        return JSONResponse(content={"message": chitchat_response})
+        chitchat_response = generate_chitchat_response(
+            query, data_loaded=data_loaded, columns=current_column_names
+        )
+        return StreamingResponse(chitchat_response, media_type="text/event-stream")

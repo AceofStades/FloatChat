@@ -1,14 +1,15 @@
+import json
+
 import faiss
 import numpy as np
 import requests
-import json
 
 
 # --- Helper functions (Unchanged) ---
 def get_ollama_embedding(text: str) -> np.ndarray:
     try:
         response = requests.post(
-            "http://localhost:11434/api/embeddings",
+            "http://3.6.244.247:11434/api/embeddings",
             json={"model": "nomic-embed-text", "prompt": text},
             timeout=30,
         )
@@ -20,26 +21,45 @@ def get_ollama_embedding(text: str) -> np.ndarray:
         return np.zeros((1, 768), dtype="float32")
 
 
-def _call_ollama_generate(prompt, system_message, format=""):
+def _call_ollama_generate(
+    prompt, system_message, format="", stream=False, model="glm-5:cloud"
+):
     try:
         response = requests.post(
-            "http://localhost:11434/api/generate",
+            "http://3.6.244.247:11434/api/generate",
             json={
-                "model": "phi3:3.8b",
+                "model": model,
                 "system": system_message,
                 "prompt": prompt,
                 "format": format,
-                "stream": False,
+                "stream": stream,
             },
+            stream=stream,
             timeout=300,
         )
         response.raise_for_status()
-        return response.json().get("response", "").strip()
+
+        if stream:
+
+            def generate_stream():
+                for line in response.iter_lines():
+                    if line:
+                        yield line.decode("utf-8") + "\n"
+
+            return generate_stream()
+        else:
+            return response.json().get("response", "").strip()
     except requests.RequestException as e:
         print(f"Error calling Ollama generate: {e}")
         error_message = (
             "Error: Could not connect to the AI model. Ensure Ollama is running."
         )
+        if stream:
+
+            def error_stream():
+                yield json.dumps({"error": error_message}) + "\n"
+
+            return error_stream()
         return f'{{"error": "{error_message}"}}' if format == "json" else error_message
 
 
@@ -70,21 +90,39 @@ def classify_intent(user_query: str) -> dict:
     system_message = """Your job is to classify the user's intent into one of three categories and respond with a JSON object.
 1. 'chitchat': For greetings, pleasantries, or questions not related to the data.
 2. 'metadata_query': If the user is asking about the dataset's structure, like column names, variables, or what kind of data is available.
-3. 'data_query': If the user is asking a specific question that requires querying the data values, like finding a maximum, minimum, average, or filtering for specific conditions.
+3. 'data_query': If the user is asking a specific question that requires querying the data values, like finding a maximum, minimum, average, or filtering for specific conditions. If the user asks to plot, chart, or graph the data, classify it as a data_query.
 
 Example 1: User says "hi how are you" -> {"intent": "chitchat"}
 Example 2: User says "what are the columns in this file?" -> {"intent": "metadata_query"}
-Example 3: User says "show me the highest temperature" -> {"intent": "data_query"}"""
-    response_str = _call_ollama_generate(user_query, system_message, format="json")
+Example 3: User says "show me the highest temperature" -> {"intent": "data_query"}
+Example 4: User says "plot a graph of the temperature" -> {"intent": "data_query"}"""
+    response_str = _call_ollama_generate(
+        user_query,
+        system_message,
+        format="json",
+        model="glm-5:cloud",
+    )
     try:
         return json.loads(response_str)
     except json.JSONDecodeError:
         return {"intent": "chitchat"}
 
 
-def generate_chitchat_response(user_query: str) -> str:
-    system_message = "You are a friendly, helpful AI assistant. Respond casually to the user's greeting or question."
-    return _call_ollama_generate(user_query, system_message)
+def generate_chitchat_response(
+    user_query: str, data_loaded: bool = False, columns: list = None
+) -> str:
+    data_context = (
+        f"A NetCDF file IS currently loaded with columns: {columns}."
+        if data_loaded
+        else "NO data file is currently loaded."
+    )
+    system_message = (
+        "You are FloatChat, an AI assistant built to help marine biologists and researchers analyze oceanographic data (specifically NetCDF files from Argo floats). "
+        "The user is talking to you. Keep your answers concise, friendly, and professional. "
+        "Do not overthink or over-explain simple greetings or pleasantries. "
+        f"IMPORTANT SYSTEM STATE: {data_context} If the user asks to plot or analyze data, but their request is too vague, nicely ask them to specify which columns they want to look at."
+    )
+    return _call_ollama_generate(user_query, system_message, stream=True)
 
 
 # --- MODIFIED: llm_nlp_to_sql now has a much more advanced prompt ---
@@ -110,6 +148,9 @@ SQL Query: SELECT AVG(latitude) FROM data;
 
 User Question: "count how many entries there are for each 'number' and show the top 5"
 SQL Query: SELECT number, COUNT(*) FROM data GROUP BY number ORDER BY COUNT(*) DESC LIMIT 5;
+
+User Question: "plot a graph of the data"
+SQL Query: SELECT * FROM data LIMIT 1000;
 --- END EXAMPLES ---
 """
     sql_query = _call_ollama_generate(user_query, system_message)

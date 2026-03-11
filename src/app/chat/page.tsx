@@ -1,339 +1,592 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ChatMessage } from "@/src/components/chat-message";
-import { ChatInput } from "@/src/components/chat-input";
-import { ChatHistorySidebar } from "@/src/components/chat-history-sidebar";
-import { QuickExamplesSidebar } from "@/src/components/quick-examples-sidebar";
-import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { ScrollArea } from "@/src/components/ui/scroll-area";
-import { Badge } from "@/src/components/ui/badge";
-import { Menu, Lightbulb, Sparkles, TrendingUp, BarChart3, Send, Loader2 } from "lucide-react";
+import { Input } from "@/src/components/ui/input";
+import { Label } from "@/src/components/ui/label";
+import { Alert, AlertDescription } from "@/src/components/ui/alert";
+import {
+    Send,
+    Loader2,
+    UploadCloud,
+    CheckCircle,
+    AlertTriangle,
+    Plus,
+    FileText,
+    MessageSquare,
+    Bot,
+} from "lucide-react";
 import { Navbar } from "@/src/components/navbar";
 
-interface Message {
-	id: string;
-	content: string;
-	isUser: boolean;
-	timestamp: string;
-	isHtml?: boolean;
-}
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+type Message = {
+    id: string;
+    content: string;
+    isUser: boolean;
+    timestamp: string;
+    isHtml?: boolean;
+    thinking?: string;
+};
 
 export default function ChatPage() {
-	const [messages, setMessages] = useState<Message[]>([
-		{
-			id: "1",
-			content:
-				"Hello! I'm your AI assistant for exploring ocean data. Please upload a NetCDF file first, then ask me a question about it.",
-			isUser: false,
-			timestamp: new Date().toLocaleTimeString(),
-		},
-	]);
-	const [isLoading, setIsLoading] = useState(false);
-	const [showChatHistory, setShowChatHistory] = useState(false);
-	const [showQuickExamples, setShowQuickExamples] = useState(false);
-	const [inputValue, setInputValue] = useState("");
-	const messagesEndRef = useRef<HTMLDivElement>(null);
+    // --- Chat State ---
+    const [messages, setMessages] = useState<Message[]>([
+        {
+            id: "1",
+            content:
+                "Hello! I'm FloatChat. How can I help you explore oceanographic data today?",
+            isUser: false,
+            timestamp: new Date().toLocaleTimeString(),
+        },
+    ]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [inputValue, setInputValue] = useState("");
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const scrollAreaRef = useRef<HTMLDivElement>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
-	// Auto-scroll to bottom when new messages are added
-	useEffect(() => {
-		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [messages]);
+    // --- Upload State ---
+    const [file, setFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadStatus, setUploadStatus] = useState<{
+        type: "success" | "error";
+        message: string;
+    } | null>(null);
+    const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
 
-	const handleSendMessage = async (content: string) => {
-		if (!content.trim()) return;
+    useEffect(() => {
+        const scrollContainer = scrollAreaRef.current?.querySelector(
+            "[data-radix-scroll-area-viewport]",
+        );
+        if (scrollContainer) {
+            const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+            // Only auto-scroll if we are already near the bottom (within 100px)
+            if (scrollHeight - scrollTop - clientHeight < 100) {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }
+        } else {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [messages]);
 
-		const userMessage: Message = {
-			id: Date.now().toString(),
-			content,
-			isUser: true,
-			timestamp: new Date().toLocaleTimeString(),
-		};
+    const stopGeneration = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+            setIsLoading(false);
+        }
+    };
 
-		const newMessages = [...messages, userMessage];
-		setMessages(newMessages);
-		setIsLoading(true);
-		setInputValue("");
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const selectedFile = e.target.files[0];
+            setFile(selectedFile);
+            setUploadStatus(null);
+            setIsUploading(true);
 
-		try {
-			const formData = new FormData();
-			formData.append("query", content);
+            const formData = new FormData();
+            formData.append("file", selectedFile);
 
-			const response = await fetch(
-				"http://127.0.0.1:8000/chatbot-response",
-				{
-					method: "POST",
-					body: formData,
-				},
-			);
+            try {
+                const response = await fetch(
+                    "http://127.0.0.1:8000/upload-data",
+                    {
+                        method: "POST",
+                        body: formData,
+                    },
+                );
 
-			if (!response.ok) {
-				const errorData = await response.json();
-				throw new Error(
-					errorData.detail || "Failed to get AI response",
-				);
-			}
+                const result = await response.json();
 
-			const contentType = response.headers.get("content-type");
-			let aiMessage: Message;
+                if (!response.ok) {
+                    throw new Error(result.detail || "Failed to upload data.");
+                }
 
-			if (contentType && contentType.includes("text/html")) {
-				const htmlContent = await response.text();
-				aiMessage = {
-					id: (Date.now() + 1).toString(),
-					content: htmlContent,
-					isUser: false,
-					timestamp: new Date().toLocaleTimeString(),
-					isHtml: true,
-				};
-			} else {
-				const data = await response.json();
-				const messageContent =
-					data.message || "No data found for this query.";
-				const preview = data.preview
-					? `\n\n**Data Preview:**\n\`\`\`json\n${JSON.stringify(
-							data.preview,
-							null,
-							2,
-						)}\n\`\`\``
-					: "";
+                setUploadStatus({ type: "success", message: result.message });
+                setUploadedFiles((prev) => [...prev, selectedFile.name]);
 
-				aiMessage = {
-					id: (Date.now() + 1).toString(),
-					content: messageContent + preview,
-					isUser: false,
-					timestamp: new Date().toLocaleTimeString(),
-				};
-			}
+                // Add a friendly system message acknowledging the upload
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: Date.now().toString(),
+                        content: `Awesome! I've successfully loaded the data from \`${selectedFile.name}\`. What would you like to know about it?`,
+                        isUser: false,
+                        timestamp: new Date().toLocaleTimeString(),
+                    },
+                ]);
+            } catch (err: any) {
+                setUploadStatus({
+                    type: "error",
+                    message: err.message || "Upload failed.",
+                });
+            } finally {
+                setIsUploading(false);
+                // Reset the input value so the same file can be uploaded again if needed
+                e.target.value = "";
+            }
+        }
+    };
 
-			setMessages((prevMessages) => [...prevMessages, aiMessage]);
-		} catch (error: any) {
-			console.error("Chat error:", error);
+    const handleSendMessage = async (content: string) => {
+        if (!content.trim()) return;
 
-			const errorMessage: Message = {
-				id: (Date.now() + 1).toString(),
-				content: `I apologize, but an error occurred. Please ensure the backend is running and data has been uploaded.\n\n**Error:** ${error.message}`,
-				isUser: false,
-				timestamp: new Date().toLocaleTimeString(),
-			};
+        const userMessage: Message = {
+            id: Date.now().toString(),
+            content,
+            isUser: true,
+            timestamp: new Date().toLocaleTimeString(),
+        };
 
-			setMessages((prevMessages) => [...prevMessages, errorMessage]);
-		} finally {
-			setIsLoading(false);
-		}
-	};
+        const newMessages = [...messages, userMessage];
+        setMessages(newMessages);
+        setIsLoading(true);
+        setInputValue("");
 
-	return (
-		<div className="h-screen flex flex-col bg-[#001222]">
-			{/* Professional Navbar */}
-			<Navbar />
+        try {
+            const formData = new FormData();
+            formData.append("query", content);
 
-			{/* Main Container */}
-			<div className="flex flex-1 relative overflow-hidden">
-				{/* Sidebars */}
-				<ChatHistorySidebar
-					isOpen={showChatHistory}
-					onClose={() => setShowChatHistory(false)}
-					onNewChat={() => {
-						setMessages([
-							{
-								id: "1",
-								content:
-									"Hello! I'm your AI assistant for exploring ocean data. Please upload a NetCDF file first, then ask me a question about it.",
-								isUser: false,
-								timestamp: new Date().toLocaleTimeString(),
-							},
-						]);
-					}}
-					onSelectChat={(chatId: string) => {
-						console.log("Selected chat:", chatId);
-					}}
-					activeChat={""}
-					chatHistory={[]}
-				/>
-				<QuickExamplesSidebar
-					isOpen={showQuickExamples}
-					onClose={() => setShowQuickExamples(false)}
-					onSelectExample={(example: string) => {
-						setInputValue(example);
-						setShowQuickExamples(false);
-					}}
-				/>
+            abortControllerRef.current = new AbortController();
 
-				{/* Main Chat Container */}
-				<div className="flex-1 flex flex-col max-w-5xl mx-auto w-full px-4 py-6 overflow-hidden">
-					{/* Header Buttons */}
-					<div className="flex items-center justify-between mb-4 flex-shrink-0">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setShowChatHistory(true)}
-							className="flex items-center gap-2"
-							style={{
-								backgroundColor: '#775253',
-								color: '#e5cdc8',
-								borderColor: '#775253'
-							}}
-						>
-							<Menu className="w-4 h-4" />
-							Chat History
-						</Button>
+            const response = await fetch(
+                "http://127.0.0.1:8000/chatbot-response",
+                {
+                    method: "POST",
+                    body: formData,
+                    signal: abortControllerRef.current.signal,
+                },
+            );
 
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setShowQuickExamples(true)}
-							className="flex items-center gap-2"
-							style={{
-								backgroundColor: '#775253',
-								color: '#e5cdc8',
-								borderColor: '#775253'
-							}}
-						>
-							<Lightbulb className="w-4 h-4" />
-							Quick Examples
-						</Button>
-					</div>
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(
+                    errorData.detail || "Failed to get AI response",
+                );
+            }
 
-					{/* Messages Area */}
-					<div
-						className="flex-1 rounded-2xl shadow-lg overflow-hidden mb-4"
-						style={{ backgroundColor: '#1a1a1a' }}
-					>
-						<ScrollArea className="h-full">
-							<div className="p-6 space-y-6">
-								{messages.map((message) => (
-									<div
-										key={message.id}
-										className={`flex ${
-											message.isUser
-												? "justify-end"
-												: "justify-start"
-										}`}
-									>
-										<div className="flex gap-3 max-w-[80%]">
-											{!message.isUser && (
-												<div
-													className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-sm"
-													style={{
-														backgroundColor: '#0a8754',
-														color: 'white'
-													}}
-												>
-													<span className="text-sm font-semibold">AI</span>
-												</div>
-											)}
-											<div className="flex flex-col gap-1">
-												<div
-													className="rounded-2xl px-5 py-3 shadow-sm"
-													style={{
-														backgroundColor: message.isUser
-															? '#004f2d'
-															: '#775253',
-														color: message.isUser
-															? '#e5cdc8'
-															: 'white'
-													}}
-												>
-													{message.isHtml ? (
-														<div dangerouslySetInnerHTML={{ __html: message.content }} />
-													) : (
-														<div className="whitespace-pre-wrap leading-relaxed">
-															{message.content}
-														</div>
-													)}
-												</div>
-												<span
-													className="text-xs px-2"
-													style={{ color: '#e5cdc8', opacity: 0.6 }}
-												>
-													{message.timestamp}
-												</span>
-											</div>
-											{message.isUser && (
-												<div
-													className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-sm"
-													style={{
-														backgroundColor: '#0a8754',
-														color: 'white'
-													}}
-												>
-													<span className="text-sm font-semibold">U</span>
-												</div>
-											)}
-										</div>
-									</div>
-								))}
-								{isLoading && (
-									<div className="flex justify-start">
-										<div className="flex gap-3 max-w-[80%]">
-											<div
-												className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-sm"
-												style={{
-													backgroundColor: '#0a8754',
-													color: 'white'
-												}}
-											>
-												<span className="text-sm font-semibold">AI</span>
-											</div>
-											<div
-												className="rounded-2xl px-5 py-3 shadow-sm flex items-center gap-2"
-												style={{
-													backgroundColor: '#775253',
-													color: 'white'
-												}}
-											>
-												<Loader2 className="w-4 h-4 animate-spin" />
-												<span>Analyzing your query...</span>
-											</div>
-										</div>
-									</div>
-								)}
-								<div ref={messagesEndRef} />
-							</div>
-						</ScrollArea>
-					</div>
+            const contentType = response.headers.get("content-type");
 
-					{/* Input Area */}
-					<div
-						className="rounded-2xl shadow-lg p-4"
-						style={{ backgroundColor: '#1a1a1a' }}
-					>
-						<div className="flex items-center gap-3">
-							<input
-								type="text"
-								value={inputValue}
-								onChange={(e) => setInputValue(e.target.value)}
-								onKeyPress={(e) => {
-									if (e.key === 'Enter' && !isLoading) {
-										handleSendMessage(inputValue);
-									}
-								}}
-								placeholder="Ask about the uploaded ocean data..."
-								disabled={isLoading}
-								className="flex-1 px-4 py-3 rounded-xl border-2 focus:outline-none focus:ring-2 transition-all"
-								style={{
-									borderColor: '#351431',
-									backgroundColor: '#2a2a2a',
-									color: '#e5cdc8'
-								}}
-							/>
-							<button
-								onClick={() => handleSendMessage(inputValue)}
-								disabled={isLoading || !inputValue.trim()}
-								className="p-3 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-								style={{
-									backgroundColor: '#0a8754',
-									color: 'white'
-								}}
-							>
-								<Send className="w-5 h-5" />
-							</button>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
+            if (contentType && contentType.includes("text/event-stream")) {
+                const aiMessageId = (Date.now() + 1).toString();
+                setMessages((prevMessages) => [
+                    ...prevMessages,
+                    {
+                        id: aiMessageId,
+                        content: "",
+                        isUser: false,
+                        timestamp: new Date().toLocaleTimeString(),
+                    },
+                ]);
+
+                const reader = response.body?.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let done = false;
+                let fullContent = "";
+                let fullThinking = "";
+                let buffer = "";
+
+                while (reader && !done) {
+                    const { value, done: readerDone } = await reader.read();
+                    done = readerDone;
+                    if (value) {
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split("\n");
+                        buffer = lines.pop() || "";
+
+                        let shouldUpdate = false;
+
+                        for (const line of lines) {
+                            if (line.trim() === "") continue;
+                            try {
+                                const parsed = JSON.parse(line);
+
+                                // Accumulate thinking state separately
+                                if (parsed.thinking) {
+                                    fullThinking += parsed.thinking;
+                                    shouldUpdate = true;
+                                }
+
+                                if (parsed.response) {
+                                    fullContent += parsed.response;
+                                    shouldUpdate = true;
+                                }
+                            } catch (e) {
+                                console.error("Error parsing stream JSON:", e);
+                            }
+                        }
+
+                        if (shouldUpdate) {
+                            setMessages((prevMessages) =>
+                                prevMessages.map((msg) =>
+                                    msg.id === aiMessageId
+                                        ? {
+                                              ...msg,
+                                              content: fullContent,
+                                              thinking: fullThinking,
+                                          }
+                                        : msg,
+                                ),
+                            );
+                        }
+                    }
+                }
+            } else if (contentType && contentType.includes("text/html")) {
+                const htmlContent = await response.text();
+                const aiMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    content: htmlContent,
+                    isUser: false,
+                    timestamp: new Date().toLocaleTimeString(),
+                    isHtml: true,
+                };
+                setMessages((prevMessages) => [...prevMessages, aiMessage]);
+            } else {
+                const data = await response.json();
+                const messageContent =
+                    data.message || "No data found for this query.";
+                const preview = data.preview
+                    ? `\n\n**Data Preview:**\n\`\`\`json\n${JSON.stringify(
+                          data.preview,
+                          null,
+                          2,
+                      )}\n\`\`\``
+                    : "";
+
+                const aiMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    content: messageContent + preview,
+                    isUser: false,
+                    timestamp: new Date().toLocaleTimeString(),
+                };
+                setMessages((prevMessages) => [...prevMessages, aiMessage]);
+            }
+        } catch (error: any) {
+            console.error("Chat error:", error);
+
+            const errorMessage: Message = {
+                id: (Date.now() + 1).toString(),
+                content: `I apologize, but an error occurred.\n\n**Error:** ${error.message}`,
+                isUser: false,
+                timestamp: new Date().toLocaleTimeString(),
+            };
+
+            setMessages((prevMessages) => [...prevMessages, errorMessage]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="h-screen flex flex-col bg-[#212121]">
+            <Navbar />
+
+            <div className="flex flex-1 overflow-hidden">
+                {/* Left Column: Chat History */}
+                <div className="hidden lg:flex flex-col w-[260px] bg-[#171717] p-3 flex-shrink-0">
+                    <Button
+                        onClick={() => {
+                            setMessages([
+                                {
+                                    id: Date.now().toString(),
+                                    content:
+                                        "Hello! I'm FloatChat. How can I help you explore oceanographic data today?",
+                                    isUser: false,
+                                    timestamp: new Date().toLocaleTimeString(),
+                                },
+                            ]);
+                            setUploadedFiles([]);
+                        }}
+                        variant="ghost"
+                        className="w-full justify-start gap-2 mb-2 hover:bg-[#212121] text-[#ececec] rounded-lg px-3 h-10 font-medium border-0"
+                    >
+                        <Plus className="w-4 h-4" /> New chat
+                    </Button>
+                    <div className="flex-1 overflow-y-auto space-y-1">
+                        <h3 className="text-xs font-semibold text-[#b4b4b4] px-3 mb-2 mt-4">
+                            Today
+                        </h3>
+                        <div className="px-3 py-2 rounded-lg bg-[#212121] text-[#ececec] cursor-pointer text-sm flex items-center gap-2">
+                            Current Session
+                        </div>
+                    </div>
+                </div>
+
+                {/* Center Column: Chat Area */}
+                <div className="flex-1 flex flex-col w-full overflow-hidden bg-[#212121]">
+                    <div className="flex-1 overflow-hidden" ref={scrollAreaRef}>
+                        <ScrollArea className="h-full w-full">
+                            <div className="max-w-3xl mx-auto py-8 px-4 sm:px-6">
+                                {messages.map((message) => (
+                                    <div
+                                        key={message.id}
+                                        className={`flex w-full mb-6 ${message.isUser ? "justify-end" : "justify-start"}`}
+                                    >
+                                        <div
+                                            className={`flex gap-4 w-full ${message.isUser ? "justify-end" : "justify-start"}`}
+                                        >
+                                            {!message.isUser && (
+                                                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border border-[#3e3e3e] bg-white text-black mt-1">
+                                                    <Bot className="w-5 h-5" />
+                                                </div>
+                                            )}
+
+                                            <div
+                                                className={`flex flex-col gap-1 max-w-[85%] sm:max-w-[85%] ${message.isUser ? "items-end" : "items-start"} overflow-hidden`}
+                                            >
+                                                {message.isUser ? (
+                                                    <div className="px-5 py-2.5 rounded-3xl bg-[#2f2f2f] text-[#ececec] text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                                                        {message.content}
+                                                    </div>
+                                                ) : (
+                                                    <div className="py-1 text-[#ececec] text-[15px] leading-relaxed break-words max-w-full w-full">
+                                                        {message.thinking && (
+                                                            <details className="mb-4">
+                                                                <summary className="cursor-pointer text-sm font-medium text-[#b4b4b4] hover:text-[#ececec] transition-colors select-none">
+                                                                    Thought
+                                                                    process
+                                                                </summary>
+                                                                <div className="mt-2 pl-4 py-2 border-l-2 border-[#2f2f2f] text-sm text-[#b4b4b4] whitespace-pre-wrap font-mono">
+                                                                    {
+                                                                        message.thinking
+                                                                    }
+                                                                </div>
+                                                            </details>
+                                                        )}
+                                                        {message.isHtml ? (
+                                                            <div
+                                                                className="overflow-x-auto max-w-full"
+                                                                dangerouslySetInnerHTML={{
+                                                                    __html: message.content,
+                                                                }}
+                                                            />
+                                                        ) : (
+                                                            <div className="prose prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-[#2f2f2f] prose-pre:border prose-pre:border-[#3e3e3e]">
+                                                                <ReactMarkdown
+                                                                    remarkPlugins={[
+                                                                        remarkGfm,
+                                                                    ]}
+                                                                >
+                                                                    {
+                                                                        message.content
+                                                                    }
+                                                                </ReactMarkdown>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                                {isLoading &&
+                                    messages[messages.length - 1]?.isUser && (
+                                        <div className="flex w-full justify-start mb-6">
+                                            <div className="flex gap-4 w-full justify-start">
+                                                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border border-[#3e3e3e] bg-white text-black mt-1">
+                                                    <Bot className="w-5 h-5" />
+                                                </div>
+                                                <div className="py-2 px-1 text-[#ececec] flex items-center">
+                                                    <div className="flex gap-1 items-center h-4">
+                                                        <div
+                                                            className="w-2 h-2 rounded-full bg-[#b4b4b4] animate-bounce"
+                                                            style={{
+                                                                animationDelay:
+                                                                    "0ms",
+                                                            }}
+                                                        ></div>
+                                                        <div
+                                                            className="w-2 h-2 rounded-full bg-[#b4b4b4] animate-bounce"
+                                                            style={{
+                                                                animationDelay:
+                                                                    "150ms",
+                                                            }}
+                                                        ></div>
+                                                        <div
+                                                            className="w-2 h-2 rounded-full bg-[#b4b4b4] animate-bounce"
+                                                            style={{
+                                                                animationDelay:
+                                                                    "300ms",
+                                                            }}
+                                                        ></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                <div ref={messagesEndRef} />
+                            </div>
+                        </ScrollArea>
+                    </div>
+
+                    <div className="w-full pb-6 pt-2 px-4 bg-[#212121]">
+                        <div className="max-w-3xl mx-auto relative flex items-center bg-[#2f2f2f] rounded-[32px] p-2 px-4 border border-[#3e3e3e]">
+                            <button
+                                className="p-2 rounded-full text-[#b4b4b4] hover:bg-[#3e3e3e] hover:text-white transition-colors flex-shrink-0"
+                                title="Attach"
+                            >
+                                <Plus className="w-5 h-5" />
+                            </button>
+                            <textarea
+                                value={inputValue}
+                                onChange={(e) => setInputValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (
+                                        e.key === "Enter" &&
+                                        !e.shiftKey &&
+                                        !isLoading
+                                    ) {
+                                        e.preventDefault();
+                                        handleSendMessage(inputValue);
+                                    }
+                                }}
+                                placeholder="Ask anything"
+                                rows={1}
+                                className="flex-1 bg-transparent text-[#ececec] placeholder-[#b4b4b4] focus:outline-none py-3 px-3 text-[15px] resize-none max-h-32 overflow-y-auto"
+                                style={{ minHeight: "44px" }}
+                            />
+                            {isLoading ? (
+                                <button
+                                    onClick={stopGeneration}
+                                    className="p-2 rounded-full transition-all bg-white text-black hover:opacity-80 flex-shrink-0 ml-1 flex items-center justify-center h-[32px] w-[32px]"
+                                    title="Stop generating"
+                                >
+                                    <svg
+                                        width="12"
+                                        height="12"
+                                        viewBox="0 0 24 24"
+                                        fill="currentColor"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                    >
+                                        <rect
+                                            x="5"
+                                            y="5"
+                                            width="14"
+                                            height="14"
+                                            rx="2"
+                                        />
+                                    </svg>
+                                </button>
+                            ) : !inputValue.trim() ? (
+                                <button className="p-2 rounded-full text-[#b4b4b4] hover:bg-[#3e3e3e] hover:text-white transition-colors flex-shrink-0 ml-1">
+                                    <svg
+                                        width="24"
+                                        height="24"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        className="w-5 h-5"
+                                    >
+                                        <path
+                                            d="M12 2C9.79086 2 8 3.79086 8 6V11C8 13.2091 9.79086 15 12 15C14.2091 15 16 13.2091 16 11V6C16 3.79086 14.2091 2 12 2Z"
+                                            fill="currentColor"
+                                        />
+                                        <path
+                                            d="M19 10V11C19 14.866 15.866 18 12 18C8.13401 18 5 14.866 5 11V10H3V11C3 15.4183 6.22262 19.0886 10.4996 19.8519V22H13.4996V19.8519C17.777 19.0886 21 15.4183 21 11V10H19Z"
+                                            fill="currentColor"
+                                        />
+                                    </svg>
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() =>
+                                        handleSendMessage(inputValue)
+                                    }
+                                    className="p-2 rounded-full transition-all bg-white text-black hover:opacity-80 flex-shrink-0 ml-1 flex items-center justify-center h-[32px] w-[32px]"
+                                >
+                                    <Send className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
+                        <div className="text-center mt-3 text-xs text-[#b4b4b4]">
+                            FloatChat can make mistakes. Check important info.
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Column: File Uploads */}
+                <div className="hidden xl:flex flex-col w-[260px] bg-[#171717] p-4 flex-shrink-0 border-l border-[#2f2f2f]">
+                    <h2 className="text-[#ececec] font-medium mb-6 flex items-center gap-2 text-sm px-2">
+                        <UploadCloud className="w-4 h-4 text-[#ececec]" /> Data
+                        Management
+                    </h2>
+
+                    <div className="flex-1 overflow-hidden flex flex-col mb-4">
+                        <h3 className="text-xs font-semibold text-[#b4b4b4] uppercase tracking-wider mb-3 px-2">
+                            Available Files
+                        </h3>
+                        <ScrollArea className="flex-1">
+                            <div className="space-y-1 pr-2">
+                                {uploadedFiles.length === 0 ? (
+                                    <p className="text-xs text-[#b4b4b4] italic px-2">
+                                        No files uploaded yet.
+                                    </p>
+                                ) : (
+                                    uploadedFiles.map((fileName, idx) => (
+                                        <div
+                                            key={idx}
+                                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-[#2f2f2f] text-[#ececec] cursor-default transition-colors"
+                                        >
+                                            <FileText className="w-4 h-4 text-[#ececec] flex-shrink-0" />
+                                            <span
+                                                className="text-sm truncate"
+                                                title={fileName}
+                                            >
+                                                {fileName}
+                                            </span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </ScrollArea>
+                    </div>
+
+                    <div className="mt-auto space-y-4 px-2">
+                        {uploadStatus && (
+                            <Alert
+                                className={`border-0 py-2 px-3 ${
+                                    uploadStatus.type === "success"
+                                        ? "bg-green-900/30 text-green-400"
+                                        : "bg-red-900/30 text-red-400"
+                                }`}
+                            >
+                                <AlertDescription className="text-xs">
+                                    {uploadStatus.message}
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
+                        <input
+                            id="file-upload"
+                            type="file"
+                            className="hidden"
+                            onChange={handleFileChange}
+                            accept=".nc"
+                            disabled={isUploading}
+                        />
+                        <Label
+                            htmlFor="file-upload"
+                            className={`w-full flex items-center justify-center h-10 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                                isUploading
+                                    ? "bg-[#2f2f2f] text-[#b4b4b4] cursor-not-allowed"
+                                    : "bg-white hover:bg-gray-200 text-black"
+                            }`}
+                        >
+                            {isUploading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Uploading...
+                                </>
+                            ) : (
+                                "Upload Data"
+                            )}
+                        </Label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 }
