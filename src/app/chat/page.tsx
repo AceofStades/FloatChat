@@ -92,7 +92,7 @@ export default function ChatPage() {
 
             try {
                 const response = await fetch(
-                    "http://127.0.0.1:8000/upload-data",
+                    "https://xv9mw0wjia.execute-api.ap-south-1.amazonaws.com/default/upload-data",
                     {
                         method: "POST",
                         body: formData,
@@ -153,7 +153,7 @@ export default function ChatPage() {
             abortControllerRef.current = new AbortController();
 
             const response = await fetch(
-                "http://127.0.0.1:8000/chatbot-response",
+                "https://xv9mw0wjia.execute-api.ap-south-1.amazonaws.com/default/chatbot-response",
                 {
                     method: "POST",
                     body: formData,

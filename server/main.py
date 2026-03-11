@@ -140,3 +140,9 @@ async def chatbot_response(query: str = Form(...)):
             query, data_loaded=data_loaded, columns=current_column_names
         )
         return StreamingResponse(chitchat_response, media_type="text/event-stream")
+
+
+# --- AWS Lambda Handler ---
+from mangum import Mangum
+
+handler = Mangum(app)
