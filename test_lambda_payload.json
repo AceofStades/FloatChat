@@ -1,0 +1,17 @@
+{
+  "version": "2.0",
+  "routeKey": "POST /{proxy+}",
+  "rawPath": "/default/chatbot-response",
+  "rawQueryString": "",
+  "headers": {
+    "content-type": "application/x-www-form-urlencoded"
+  },
+  "requestContext": {
+    "http": {
+      "method": "POST",
+      "path": "/default/chatbot-response"
+    }
+  },
+  "body": "query=hello",
+  "isBase64Encoded": false
+}

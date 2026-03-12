@@ -1,7 +1,8 @@
 import sqlite3
+
 import pandas as pd
 
-DB_PATH = "argo_data.db"
+DB_PATH = "/tmp/argo_data.db"
 
 
 def store_to_sqlite(df: pd.DataFrame, table_name: str = "data"):

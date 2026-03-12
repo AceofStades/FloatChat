@@ -1,0 +1,20 @@
+{
+  "version": "2.0",
+  "routeKey": "POST /{proxy+}",
+  "rawPath": "/chatbot-response",
+  "rawQueryString": "",
+  "headers": {
+    "content-length": "23",
+    "content-type": "application/x-www-form-urlencoded",
+    "host": "xv9mw0wjia.execute-api.ap-south-1.amazonaws.com"
+  },
+  "requestContext": {
+    "http": {
+      "method": "POST",
+      "path": "/chatbot-response",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  "body": "query=hey",
+  "isBase64Encoded": false
+}

@@ -92,7 +92,7 @@ export default function ChatPage() {
 
             try {
                 const response = await fetch(
-                    "https://xv9mw0wjia.execute-api.ap-south-1.amazonaws.com/default/upload-data",
+                    "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/upload-data",
                     {
                         method: "POST",
                         body: formData,
@@ -153,7 +153,7 @@ export default function ChatPage() {
             abortControllerRef.current = new AbortController();
 
             const response = await fetch(
-                "https://xv9mw0wjia.execute-api.ap-south-1.amazonaws.com/default/chatbot-response",
+                "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/chatbot-response",
                 {
                     method: "POST",
                     body: formData,

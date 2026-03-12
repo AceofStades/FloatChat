@@ -35,15 +35,17 @@ current_column_names = []
 
 
 @app.get("/")
+@app.get("/default/")
 def root():
     return {"message": "FloatChat API is running and ready to connect to Ollama."}
 
 
 @app.post("/upload-data")
+@app.post("/default/upload-data")
 async def upload_data(file: UploadFile = File(...)):
     global data_loaded, current_data_context, current_column_names
     try:
-        temp_file_path = f"temp_{file.filename}"
+        temp_file_path = f"/tmp/temp_{file.filename}"
         with open(temp_file_path, "wb") as f:
             f.write(await file.read())
         ds = xr.open_dataset(temp_file_path)
@@ -75,6 +77,7 @@ async def upload_data(file: UploadFile = File(...)):
 
 
 @app.post("/chatbot-response")
+@app.post("/default/chatbot-response")
 async def chatbot_response(query: str = Form(...)):
     intent_result = classify_intent(query)
     intent = intent_result.get("intent", "chitchat")
@@ -85,7 +88,7 @@ async def chatbot_response(query: str = Form(...)):
         chitchat_response = generate_chitchat_response(
             prompt, data_loaded=False, columns=[]
         )
-        return StreamingResponse(chitchat_response, media_type="text/event-stream")
+        return JSONResponse(content={"message": chitchat_response})
 
     # --- MODIFIED: Simplified and corrected metadata logic ---
     if intent == "metadata_query":
@@ -139,10 +142,25 @@ async def chatbot_response(query: str = Form(...)):
         chitchat_response = generate_chitchat_response(
             query, data_loaded=data_loaded, columns=current_column_names
         )
-        return StreamingResponse(chitchat_response, media_type="text/event-stream")
+        return JSONResponse(content={"message": chitchat_response})
+
+        # --- AWS Lambda Handler ---
 
 
-# --- AWS Lambda Handler ---
 from mangum import Mangum
 
-handler = Mangum(app)
+handler = Mangum(
+    app,
+    api_gateway_base_path="/default",
+    text_mime_types=[
+        MIME_TYPE
+        for MIME_TYPE in [
+            "text/event-stream",
+            "text/plain",
+            "text/html",
+            "application/json",
+            "multipart/form-data",
+            "application/x-www-form-urlencoded",
+        ]
+    ],
+)

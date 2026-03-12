@@ -122,7 +122,7 @@ def generate_chitchat_response(
         "Do not overthink or over-explain simple greetings or pleasantries. "
         f"IMPORTANT SYSTEM STATE: {data_context} If the user asks to plot or analyze data, but their request is too vague, nicely ask them to specify which columns they want to look at."
     )
-    return _call_ollama_generate(user_query, system_message, stream=True)
+    return _call_ollama_generate(user_query, system_message, stream=False)
 
 
 # --- MODIFIED: llm_nlp_to_sql now has a much more advanced prompt ---
