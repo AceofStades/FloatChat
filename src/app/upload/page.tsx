@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Navbar } from "@/src/components/navbar";
+import { useAuth } from "@/src/contexts/auth-context";
 import {
     Card,
     CardContent,
@@ -16,6 +17,8 @@ import { Alert, AlertDescription } from "@/src/components/ui/alert";
 import { UploadCloud, Loader2, CheckCircle, AlertTriangle } from "lucide-react";
 
 export default function UploadPage() {
+    const { user } = useAuth();
+    const [currentSessionId] = useState(`session_${Date.now()}`);
     const [file, setFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [status, setStatus] = useState<{
@@ -44,10 +47,12 @@ export default function UploadPage() {
 
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("user_id", user?.id || "anonymous");
+        formData.append("session_id", currentSessionId);
 
         try {
             const response = await fetch(
-                "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/upload-data",
+                "https://xv9mw0wjia.execute-api.ap-south-1.amazonaws.com/upload-data",
                 {
                     method: "POST",
                     body: formData,

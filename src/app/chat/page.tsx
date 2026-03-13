@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/src/components/navbar";
 
+import { useAuth } from "@/src/contexts/auth-context";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -32,6 +33,9 @@ type Message = {
 };
 
 export default function ChatPage() {
+    const { user } = useAuth();
+    const [currentSessionId] = useState(`session_${Date.now()}`);
+
     // --- Chat State ---
     const [messages, setMessages] = useState<Message[]>([
         {
@@ -89,10 +93,12 @@ export default function ChatPage() {
 
             const formData = new FormData();
             formData.append("file", selectedFile);
+            formData.append("user_id", user?.id || "anonymous");
+            formData.append("session_id", currentSessionId);
 
             try {
                 const response = await fetch(
-                    "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/upload-data",
+                    "https://xv9mw0wjia.execute-api.ap-south-1.amazonaws.com/upload-data",
                     {
                         method: "POST",
                         body: formData,
@@ -149,11 +155,13 @@ export default function ChatPage() {
         try {
             const formData = new FormData();
             formData.append("query", content);
+            formData.append("user_id", user?.id || "anonymous");
+            formData.append("session_id", currentSessionId);
 
             abortControllerRef.current = new AbortController();
 
             const response = await fetch(
-                "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/chatbot-response",
+                "https://xv9mw0wjia.execute-api.ap-south-1.amazonaws.com/chatbot-response",
                 {
                     method: "POST",
                     body: formData,

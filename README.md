@@ -1,5 +1,7 @@
  🌊 FloatChat - AI-Powered Ocean Data Exploration
 
+**🔴 Live Demo:** [FloatChat Web App](http://floatchat-frontend.s3-website.ap-south-1.amazonaws.com) *(Hosted on Amazon S3)*
+
 **FloatChat** is an advanced ocean analytics platform designed to transform oceanographic research. By combining **interactive 3D visualization** with **AI-driven natural language processing**, FloatChat allows researchers and enthusiasts to explore complex ARGO float data, visualize global ocean monitoring networks, and uncover insights through simple conversation.
 
 ## 📸 Project Previews
@@ -22,6 +24,56 @@
 * **NetCDF Data Processing**: Upload and process raw `.nc` (NetCDF) files directly through the platform.
 * **Authentication System**: Secure login, registration, and guest access modes.
 * **Research Grade Data**: Tools for analyzing temperature, salinity, and biogeochemical profiles.
+
+-----
+
+## ☁️ AWS Cloud Architecture
+
+FloatChat is deployed using a decoupled, highly scalable, and secure 10-service AWS architecture, designed to balance performance with strict security and auditing compliance.
+
+### The 11 AWS Services Integrated:
+1. **Amazon S3 (Frontend & User Data)**: Dual-purpose object storage. It hosts the compiled Next.js frontend as a static website, providing infinite scalability. A separate secure bucket completely isolates user-uploaded NetCDF files and their processed SQLite database states to ensure zero data cross-contamination between chat sessions.
+2. **Amazon CloudFront (CDN)**: A global content delivery network serving the S3 frontend. It dramatically accelerates page load times for international researchers by caching assets at edge locations and automatically enforcing HTTPS encryption.
+3. **Amazon Cognito (Authentication)**: Enterprise-grade identity management. It handles the complete lifecycle of user registration, login authentication, password recovery, and the issuance of secure JSON Web Tokens (JWT) required to access the API.
+4. **AWS WAF (Web Application Firewall)**: Attached directly to the API Gateway, WAF acts as an advanced Layer 7 security shield. It inspects all incoming traffic for malicious payloads, blocks SQL injection attempts, mitigates DDoS attacks, and enforces strict rate-limiting.
+5. **Amazon API Gateway (Routing)**: The highly optimized HTTP/REST ingress layer. It receives all secure backend requests from the Next.js frontend, validates CORS headers, and dynamically triggers the appropriate serverless compute resources.
+6. **AWS Lambda (Compute)**: The core serverless "glue" of the application. Containerized via Docker, this Python backend processes incoming `.nc` files into dataframes, queries the DynamoDB state, constructs the LLM prompts, and streams the AI response back to the client. It scales instantly to zero, costing absolutely nothing when the app is idle.
+7. **Amazon EC2 (AI Engine Proxy)**: A persistent `t2.micro` instance running the Ollama engine. Instead of crashing a low-memory instance with heavy local model weights, it acts as a lightweight proxy interface to the `glm-5:cloud` LLM, ensuring 100% stability and sub-second generation speeds.
+8. **Amazon DynamoDB (State Management)**: A high-performance NoSQL database. It replaces transient local memory by permanently storing individual user chat histories, session identifiers, and metadata schemas, giving the AI continuous, stateless "memory" across user visits.
+9. **Amazon ECR (Elastic Container Registry)**: A highly available docker registry storing the custom Python 3.12 image required to run our FastAPI application and its complex scientific dependencies (like Pandas and Xarray) inside Lambda.
+10. **AWS CloudTrail (Governance)**: Continuous security and compliance auditing. It acts as an immutable ledger, tracking and recording every internal API call (like S3 bucket access or DynamoDB queries), proving that user scientific data is handled securely and transparently.
+11. **Amazon CloudWatch (Observability)**: Centralized telemetry. It automatically ingests all output logs, tracebacks, and execution metrics from Lambda and API Gateway, enabling rapid debugging and system health monitoring without ever SSHing into a server.
+
+### Architecture Data Flow
+
+```mermaid
+graph TD
+    User([User / Browser]) -->|HTTPS Request| CF[Amazon CloudFront]
+    CF -->|Static Assets| S3_Front[Amazon S3: Frontend Hosting]
+    
+    User -->|Authentication| Cognito[Amazon Cognito]
+    
+    User -->|API / Chat Request| WAF[AWS WAF]
+    WAF --> APIGW[Amazon API Gateway]
+    
+    APIGW -->|Trigger| Lambda[AWS Lambda: Python Backend]
+    
+    Lambda <-->|Fetch/Store User State| DynamoDB[(Amazon DynamoDB)]
+    Lambda <-->|Upload/Download Data| S3_Data[(Amazon S3: User Data)]
+    
+    Lambda -->|LLM Prompt| EC2[Amazon EC2: Ollama AI Proxy]
+    EC2 -.->|External API| LLM[Cloud LLM Model]
+    
+    Lambda -.->|Logs| CW[Amazon CloudWatch]
+    
+    subgraph Audit & Governance
+        CT[AWS CloudTrail] -.->|Logs Activity| S3_Front
+        CT -.->|Logs Activity| S3_Data
+        CT -.->|Logs Activity| DynamoDB
+    end
+```
+
+For more detailed information, see the [Deployment Architecture Documentation](docs/DEPLOYMENT_ARCHITECTURE.md).
 
 -----
 

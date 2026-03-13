@@ -8,6 +8,12 @@ anyio==4.12.1
     # via
     #   starlette
     #   watchfiles
+boto3==1.42.67
+    # via server (pyproject.toml)
+botocore==1.42.67
+    # via
+    #   boto3
+    #   s3transfer
 branca==0.8.2
     # via folium
 certifi==2026.2.25
@@ -44,6 +50,10 @@ jinja2==3.1.6
     # via
     #   branca
     #   folium
+jmespath==1.1.0
+    # via
+    #   boto3
+    #   botocore
 kiwisolver==1.5.0
     # via matplotlib
 mangum==0.21.0
@@ -90,6 +100,7 @@ pyparsing==3.3.2
     # via matplotlib
 python-dateutil==2.9.0.post0
     # via
+    #   botocore
     #   matplotlib
     #   pandas
 python-dotenv==1.2.2
@@ -102,6 +113,8 @@ requests==2.32.5
     # via
     #   server (pyproject.toml)
     #   folium
+s3transfer==0.16.0
+    # via boto3
 scipy==1.17.1
     # via server (pyproject.toml)
 six==1.17.0
@@ -122,7 +135,9 @@ typing-inspection==0.4.2
     #   fastapi
     #   pydantic
 urllib3==2.6.3
-    # via requests
+    # via
+    #   botocore
+    #   requests
 uvicorn==0.41.0
     # via server (pyproject.toml)
 uvloop==0.22.1
