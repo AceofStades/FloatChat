@@ -16,6 +16,7 @@ from app.aws_services import (
     boto3,
     chat_table,
     download_file_from_s3,
+    get_all_sessions,
     get_session_data,
     save_chat_message,
     save_session_data,
@@ -76,7 +77,12 @@ async def upload_data(
 
         # Save to DynamoDB
         save_session_data(
-            user_id, session_id, current_column_names, schema, sample_data
+            user_id,
+            session_id,
+            current_column_names,
+            schema,
+            sample_data,
+            file.filename,
         )
 
         # Clean up tmp NetCDF
@@ -168,7 +174,11 @@ async def chatbot_response(
         user_id,
         session_id,
         "assistant",
-        response_message if response_message else "Generated interactive content",
+        html_content
+        if html_content
+        else (
+            response_message if response_message else "Generated interactive content"
+        ),
     )
 
     if html_content:
@@ -194,11 +204,32 @@ def get_history(user_id: str, session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/sessions/{user_id}")
+@app.get("/default/sessions/{user_id}")
+def get_user_sessions(user_id: str):
+    try:
+        sessions = get_all_sessions(user_id)
+        # Sort by updated descending
+        sessions = sorted(sessions, key=lambda x: x.get("updatedAt", ""), reverse=True)
+        # Format the return data
+        result = []
+        for s in sessions:
+            result.append(
+                {
+                    "sessionId": s.get("sessionId"),
+                    "filename": s.get("filename", "Unknown File"),
+                    "updatedAt": s.get("updatedAt", ""),
+                }
+            )
+        return JSONResponse(content={"sessions": result})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 from mangum import Mangum
 
 handler = Mangum(
     app,
-    api_gateway_base_path="/default",
     text_mime_types=[
         MIME_TYPE
         for MIME_TYPE in [
@@ -206,7 +237,6 @@ handler = Mangum(
             "text/plain",
             "text/html",
             "application/json",
-            "multipart/form-data",
             "application/x-www-form-urlencoded",
         ]
     ],

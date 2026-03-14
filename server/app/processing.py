@@ -16,7 +16,11 @@ def nc_to_dataframe(ds: xr.Dataset) -> pd.DataFrame:
     """
     Converts any NetCDF xarray dataset into a flattened Pandas DataFrame.
     """
+    # Drop any dimensions that have a size of 0 to prevent empty cartesian products
+    for dim in list(ds.dims):
+        if ds.sizes[dim] == 0:
+            ds = ds.drop_dims(dim)
+
     # This robustly converts the dataset to a dataframe, making columns from coordinates.
     df = ds.to_dataframe().reset_index()
-    # MODIFIED: Removed .dropna() to allow rows with missing values.
     return df

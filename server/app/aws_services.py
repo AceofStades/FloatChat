@@ -31,7 +31,12 @@ def save_chat_message(user_id: str, session_id: str, role: str, content: str):
 
 
 def save_session_data(
-    user_id: str, session_id: str, columns: list, schema: str, sample_data: str
+    user_id: str,
+    session_id: str,
+    columns: list,
+    schema: str,
+    sample_data: str,
+    filename: str = "",
 ):
     try:
         sessions_table.put_item(
@@ -41,6 +46,7 @@ def save_session_data(
                 "columns": json.dumps(columns),
                 "schema": schema,
                 "sample_data": sample_data,
+                "filename": filename,
                 "updatedAt": datetime.utcnow().isoformat(),
             }
         )
@@ -60,6 +66,20 @@ def get_session_data(user_id: str, session_id: str):
     except Exception as e:
         print(f"DynamoDB Error (get_session_data): {e}")
         return None
+
+
+def get_all_sessions(user_id: str):
+    from boto3.dynamodb.conditions import Key
+
+    try:
+        response = sessions_table.query(
+            KeyConditionExpression=Key("userId").eq(user_id)
+        )
+        items = response.get("Items", [])
+        return items
+    except Exception as e:
+        print(f"DynamoDB Error (get_all_sessions): {e}")
+        return []
 
 
 def upload_file_to_s3(file_path: str, s3_key: str):

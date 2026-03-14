@@ -34,7 +34,12 @@ type Message = {
 
 export default function ChatPage() {
     const { user } = useAuth();
-    const [currentSessionId] = useState(`session_${Date.now()}`);
+    const [currentSessionId, setCurrentSessionId] = useState(
+        `session_${Date.now()}`,
+    );
+    const [sessions, setSessions] = useState<
+        { sessionId: string; filename: string; updatedAt: string }[]
+    >([]);
 
     // --- Chat State ---
     const [messages, setMessages] = useState<Message[]>([
@@ -60,6 +65,86 @@ export default function ChatPage() {
         message: string;
     } | null>(null);
     const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+
+    // Fetch user sessions
+    useEffect(() => {
+        if (!user) return;
+        const fetchSessions = async () => {
+            try {
+                const res = await fetch(
+                    `https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/sessions/${user.id}`,
+                );
+                if (res.ok) {
+                    const data = await res.json();
+                    setSessions(data.sessions || []);
+                }
+            } catch (err) {
+                console.error("Failed to fetch sessions", err);
+            }
+        };
+        fetchSessions();
+    }, [user]);
+
+    // Fetch chat history when session changes
+    useEffect(() => {
+        if (!user) return;
+
+        const fetchHistory = async () => {
+            setIsLoading(true);
+            try {
+                const res = await fetch(
+                    `https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/chat-history/${user.id}/${currentSessionId}`,
+                );
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.history && data.history.length > 0) {
+                        const historyMessages = data.history.map(
+                            (msg: any, idx: number) => ({
+                                id: `hist_${idx}`,
+                                content: msg.content,
+                                isUser: msg.role === "user",
+                                timestamp: new Date(
+                                    msg.timestamp,
+                                ).toLocaleTimeString(),
+                                isHtml: msg.content.includes("<iframe"),
+                            }),
+                        );
+                        setMessages(historyMessages);
+                    } else {
+                        setMessages([
+                            {
+                                id: "1",
+                                content:
+                                    "Hello! I'm FloatChat. How can I help you explore oceanographic data today?",
+                                isUser: false,
+                                timestamp: new Date().toLocaleTimeString(),
+                            },
+                        ]);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch chat history", err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        // Find the current session filename and set uploadedFiles
+        const currentSession = sessions.find(
+            (s) => s.sessionId === currentSessionId,
+        );
+        if (
+            currentSession &&
+            currentSession.filename &&
+            currentSession.filename !== "Unknown File"
+        ) {
+            setUploadedFiles([currentSession.filename]);
+        } else if (!sessions.find((s) => s.sessionId === currentSessionId)) {
+            setUploadedFiles([]);
+        }
+
+        fetchHistory();
+    }, [currentSessionId, user, sessions]);
 
     useEffect(() => {
         const scrollContainer = scrollAreaRef.current?.querySelector(
@@ -87,6 +172,18 @@ export default function ChatPage() {
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             const selectedFile = e.target.files[0];
+
+            // API Gateway has a hard 10MB limit. 9MB is a safe buffer for multipart overhead.
+            if (selectedFile.size > 9 * 1024 * 1024) {
+                setUploadStatus({
+                    type: "error",
+                    message:
+                        "File is too large. Please upload a file smaller than 9MB to ensure successful processing.",
+                });
+                e.target.value = "";
+                return;
+            }
+
             setFile(selectedFile);
             setUploadStatus(null);
             setIsUploading(true);
@@ -98,7 +195,7 @@ export default function ChatPage() {
 
             try {
                 const response = await fetch(
-                    "https://xv9mw0wjia.execute-api.ap-south-1.amazonaws.com/upload-data",
+                    "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/upload-data",
                     {
                         method: "POST",
                         body: formData,
@@ -112,7 +209,34 @@ export default function ChatPage() {
                 }
 
                 setUploadStatus({ type: "success", message: result.message });
-                setUploadedFiles((prev) => [...prev, selectedFile.name]);
+                setUploadedFiles([selectedFile.name]); // Replace instead of append since it's one file per session
+
+                // Update sessions list with the new session
+                setSessions((prev) => {
+                    const exists = prev.find(
+                        (s) => s.sessionId === currentSessionId,
+                    );
+                    if (exists) {
+                        return prev.map((s) =>
+                            s.sessionId === currentSessionId
+                                ? {
+                                      ...s,
+                                      filename: selectedFile.name,
+                                      updatedAt: new Date().toISOString(),
+                                  }
+                                : s,
+                        );
+                    } else {
+                        return [
+                            {
+                                sessionId: currentSessionId,
+                                filename: selectedFile.name,
+                                updatedAt: new Date().toISOString(),
+                            },
+                            ...prev,
+                        ];
+                    }
+                });
 
                 // Add a friendly system message acknowledging the upload
                 setMessages((prev) => [
@@ -161,7 +285,7 @@ export default function ChatPage() {
             abortControllerRef.current = new AbortController();
 
             const response = await fetch(
-                "https://xv9mw0wjia.execute-api.ap-south-1.amazonaws.com/chatbot-response",
+                "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/chatbot-response",
                 {
                     method: "POST",
                     body: formData,
@@ -297,9 +421,11 @@ export default function ChatPage() {
                 <div className="hidden lg:flex flex-col w-[260px] bg-[#171717] p-3 flex-shrink-0">
                     <Button
                         onClick={() => {
+                            const newSessionId = `session_${Date.now()}`;
+                            setCurrentSessionId(newSessionId);
                             setMessages([
                                 {
-                                    id: Date.now().toString(),
+                                    id: "1",
                                     content:
                                         "Hello! I'm FloatChat. How can I help you explore oceanographic data today?",
                                     isUser: false,
@@ -307,6 +433,15 @@ export default function ChatPage() {
                                 },
                             ]);
                             setUploadedFiles([]);
+                            // Add a placeholder to the UI immediately
+                            setSessions((prev) => [
+                                {
+                                    sessionId: newSessionId,
+                                    filename: "New Chat",
+                                    updatedAt: new Date().toISOString(),
+                                },
+                                ...prev,
+                            ]);
                         }}
                         variant="ghost"
                         className="w-full justify-start gap-2 mb-2 hover:bg-[#212121] text-[#ececec] rounded-lg px-3 h-10 font-medium border-0"
@@ -314,12 +449,40 @@ export default function ChatPage() {
                         <Plus className="w-4 h-4" /> New chat
                     </Button>
                     <div className="flex-1 overflow-y-auto space-y-1">
-                        <h3 className="text-xs font-semibold text-[#b4b4b4] px-3 mb-2 mt-4">
-                            Today
+                        <h3 className="text-xs font-semibold text-[#b4b4b4] px-3 mb-2 mt-4 uppercase tracking-wider">
+                            Sessions
                         </h3>
-                        <div className="px-3 py-2 rounded-lg bg-[#212121] text-[#ececec] cursor-pointer text-sm flex items-center gap-2">
-                            Current Session
-                        </div>
+                        {sessions.length === 0 ? (
+                            <div className="px-3 py-2 text-[#b4b4b4] text-xs italic">
+                                No previous sessions.
+                            </div>
+                        ) : (
+                            sessions.map((s) => (
+                                <div
+                                    key={s.sessionId}
+                                    onClick={() =>
+                                        setCurrentSessionId(s.sessionId)
+                                    }
+                                    className={`px-3 py-2 rounded-lg cursor-pointer text-sm flex items-center gap-2 truncate ${
+                                        currentSessionId === s.sessionId
+                                            ? "bg-[#2f2f2f] text-[#ececec]"
+                                            : "text-[#b4b4b4] hover:bg-[#212121] hover:text-[#ececec]"
+                                    }`}
+                                    title={
+                                        s.filename !== "Unknown File"
+                                            ? s.filename
+                                            : "Chat Session"
+                                    }
+                                >
+                                    <MessageSquare className="w-4 h-4 flex-shrink-0" />
+                                    <span className="truncate">
+                                        {s.filename !== "Unknown File"
+                                            ? s.filename
+                                            : "Chat Session"}
+                                    </span>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
 
@@ -432,12 +595,21 @@ export default function ChatPage() {
 
                     <div className="w-full pb-6 pt-2 px-4 bg-[#212121]">
                         <div className="max-w-3xl mx-auto relative flex items-center bg-[#2f2f2f] rounded-[32px] p-2 px-4 border border-[#3e3e3e]">
-                            <button
-                                className="p-2 rounded-full text-[#b4b4b4] hover:bg-[#3e3e3e] hover:text-white transition-colors flex-shrink-0"
+                            <label
+                                htmlFor="file-upload"
+                                className={`p-2 rounded-full transition-colors flex-shrink-0 cursor-pointer ${
+                                    isUploading
+                                        ? "text-[#b4b4b4] opacity-50 cursor-not-allowed"
+                                        : "text-[#b4b4b4] hover:bg-[#3e3e3e] hover:text-white"
+                                }`}
                                 title="Attach"
                             >
-                                <Plus className="w-5 h-5" />
-                            </button>
+                                {isUploading ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                ) : (
+                                    <Plus className="w-5 h-5" />
+                                )}
+                            </label>
                             <textarea
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
@@ -445,15 +617,21 @@ export default function ChatPage() {
                                     if (
                                         e.key === "Enter" &&
                                         !e.shiftKey &&
-                                        !isLoading
+                                        !isLoading &&
+                                        !isUploading
                                     ) {
                                         e.preventDefault();
                                         handleSendMessage(inputValue);
                                     }
                                 }}
-                                placeholder="Ask anything"
+                                disabled={isLoading || isUploading}
+                                placeholder={
+                                    isUploading
+                                        ? "Please wait for upload to finish..."
+                                        : "Ask anything"
+                                }
                                 rows={1}
-                                className="flex-1 bg-transparent text-[#ececec] placeholder-[#b4b4b4] focus:outline-none py-3 px-3 text-[15px] resize-none max-h-32 overflow-y-auto"
+                                className="flex-1 bg-transparent text-[#ececec] placeholder-[#b4b4b4] focus:outline-none py-3 px-3 text-[15px] resize-none max-h-32 overflow-y-auto disabled:opacity-50"
                                 style={{ minHeight: "44px" }}
                             />
                             {isLoading ? (
@@ -478,8 +656,11 @@ export default function ChatPage() {
                                         />
                                     </svg>
                                 </button>
-                            ) : !inputValue.trim() ? (
-                                <button className="p-2 rounded-full text-[#b4b4b4] hover:bg-[#3e3e3e] hover:text-white transition-colors flex-shrink-0 ml-1">
+                            ) : !inputValue.trim() || isUploading ? (
+                                <button
+                                    disabled
+                                    className="p-2 rounded-full text-[#b4b4b4] hover:bg-[#3e3e3e] hover:text-white transition-colors flex-shrink-0 ml-1 opacity-50 cursor-not-allowed"
+                                >
                                     <svg
                                         width="24"
                                         height="24"

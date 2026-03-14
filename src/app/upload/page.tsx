@@ -42,6 +42,15 @@ export default function UploadPage() {
             return;
         }
 
+        if (file.size > 9 * 1024 * 1024) {
+            setStatus({
+                type: "error",
+                message:
+                    "File is too large. Please upload a file smaller than 9MB.",
+            });
+            return;
+        }
+
         setIsUploading(true);
         setStatus(null);
 
@@ -52,7 +61,7 @@ export default function UploadPage() {
 
         try {
             const response = await fetch(
-                "https://xv9mw0wjia.execute-api.ap-south-1.amazonaws.com/upload-data",
+                "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/upload-data",
                 {
                     method: "POST",
                     body: formData,

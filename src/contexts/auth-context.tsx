@@ -11,6 +11,7 @@ import {
     signIn,
     signUp,
     signOut,
+    confirmSignUp,
     getCurrentUser,
     fetchUserAttributes,
 } from "aws-amplify/auth";
@@ -25,12 +26,16 @@ interface User {
 interface AuthContextType {
     user: User | null;
     isAuthenticated: boolean;
-    login: (email: string, password: string) => Promise<boolean>;
+    login: (
+        email: string,
+        password: string,
+    ) => Promise<{ success: boolean; nextStep?: string }>;
     register: (
         email: string,
         password: string,
         name: string,
-    ) => Promise<boolean>;
+    ) => Promise<{ success: boolean; nextStep?: string }>;
+    confirmRegister: (email: string, code: string) => Promise<boolean>;
     logout: () => Promise<void>;
     continueAsGuest: () => void;
 }
@@ -67,17 +72,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
-    const login = async (email: string, password: string): Promise<boolean> => {
+    const login = async (
+        email: string,
+        password: string,
+    ): Promise<{ success: boolean; nextStep?: string }> => {
         try {
-            const { isSignedIn } = await signIn({ username: email, password });
+            const { isSignedIn, nextStep } = await signIn({
+                username: email,
+                password,
+            });
             if (isSignedIn) {
                 await checkUser();
-                return true;
+                return { success: true };
             }
-            return false;
+            return { success: false, nextStep: nextStep?.signInStep };
         } catch (error) {
             console.error("Error signing in", error);
-            return false;
+            throw error;
         }
     };
 
@@ -85,9 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: string,
         password: string,
         name: string,
-    ): Promise<boolean> => {
+    ): Promise<{ success: boolean; nextStep?: string }> => {
         try {
-            const { isSignUpComplete } = await signUp({
+            const { isSignUpComplete, nextStep } = await signUp({
                 username: email,
                 password,
                 options: {
@@ -98,18 +109,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 },
             });
 
-            // Note: In a real app, you'd handle email verification here.
-            // For this prototype, we'll try to log them in directly if auto-verified.
-            try {
-                await signIn({ username: email, password });
-                await checkUser();
-            } catch (e) {
-                // They might need to verify email first
+            if (isSignUpComplete) {
+                try {
+                    await signIn({ username: email, password });
+                    await checkUser();
+                } catch (e) {
+                    // ignore sign in error
+                }
+                return { success: true };
+            } else {
+                return { success: false, nextStep: nextStep.signUpStep };
             }
-            return true;
         } catch (error) {
             console.error("Error signing up", error);
-            return false;
+            throw error;
+        }
+    };
+
+    const confirmRegister = async (
+        email: string,
+        code: string,
+    ): Promise<boolean> => {
+        try {
+            const { isSignUpComplete } = await confirmSignUp({
+                username: email,
+                confirmationCode: code,
+            });
+            return isSignUpComplete;
+        } catch (error) {
+            console.error("Error confirming sign up", error);
+            throw error;
         }
     };
 
@@ -143,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 isAuthenticated,
                 login,
                 register,
+                confirmRegister,
                 logout,
                 continueAsGuest,
             }}

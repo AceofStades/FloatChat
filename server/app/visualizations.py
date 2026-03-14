@@ -32,7 +32,7 @@ def map_html(df: pd.DataFrame):
     import html
 
     escaped_html = html.escape(raw_html)
-    iframe_html = f'<iframe srcdoc="{escaped_html}" style="width: 100%; height: 450px; border: none; border-radius: 8px; background: transparent;"></iframe>'
+    iframe_html = f'<iframe srcdoc="{escaped_html}" style="width: 100%; aspect-ratio: 16/9; min-height: 400px; border: none; border-radius: 8px; background: transparent; overflow: hidden;" scrolling="no"></iframe>'
     return iframe_html
 
 
@@ -80,13 +80,15 @@ def generate_chart_html(df: pd.DataFrame, title: str = "Data Visualization") -> 
             template="plotly_dark",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=20, r=20, t=40, b=20),
+            autosize=True,
         )
 
         raw_html = pio.to_html(fig, full_html=True, include_plotlyjs="cdn")
         import html
 
         escaped_html = html.escape(raw_html)
-        iframe_html = f'<iframe srcdoc="{escaped_html}" style="width: 100%; height: 450px; border: none; border-radius: 8px; background: transparent;"></iframe>'
+        iframe_html = f'<iframe srcdoc="{escaped_html}" style="width: 100%; aspect-ratio: 16/9; min-height: 400px; border: none; border-radius: 8px; background: transparent; overflow: hidden;" scrolling="no"></iframe>'
         return iframe_html
     except Exception as e:
         return f"<h3>Error generating chart: {e}</h3>"
