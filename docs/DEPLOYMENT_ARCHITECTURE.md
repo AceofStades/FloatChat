@@ -1,6 +1,6 @@
 # FloatChat Comprehensive AWS Deployment Architecture
 
-**🔴 Live Demo:** [http://floatchat-frontend.s3-website.ap-south-1.amazonaws.com](http://floatchat-frontend.s3-website.ap-south-1.amazonaws.com) *(Hosted on Amazon S3)*
+**🔴 Live Demo:** [https://d1wndp77jzbix4.cloudfront.net](https://d1wndp77jzbix4.cloudfront.net) *(Hosted on Amazon S3)*
 
 This document outlines the complete, highly decoupled cloud architecture designed to host FloatChat. To meet enterprise standards for performance, security, and auditing compliance—while operating largely within the AWS Free Tier—the platform integrates **11 distinct AWS Services**.
 

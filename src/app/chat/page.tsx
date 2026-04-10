@@ -72,7 +72,7 @@ export default function ChatPage() {
         const fetchSessions = async () => {
             try {
                 const res = await fetch(
-                    `https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/sessions/${user.id}`,
+                    `https://exn01sk1s7.execute-api.ap-south-1.amazonaws.com/prod/sessions/${user.id}`,
                 );
                 if (res.ok) {
                     const data = await res.json();
@@ -93,7 +93,7 @@ export default function ChatPage() {
             setIsLoading(true);
             try {
                 const res = await fetch(
-                    `https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/chat-history/${user.id}/${currentSessionId}`,
+                    `https://exn01sk1s7.execute-api.ap-south-1.amazonaws.com/prod/chat-history/${user.id}/${currentSessionId}`,
                 );
                 if (res.ok) {
                     const data = await res.json();
@@ -195,7 +195,7 @@ export default function ChatPage() {
 
             try {
                 const response = await fetch(
-                    "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/upload-data",
+                    "https://exn01sk1s7.execute-api.ap-south-1.amazonaws.com/prod/upload-data",
                     {
                         method: "POST",
                         body: formData,
@@ -285,7 +285,7 @@ export default function ChatPage() {
             abortControllerRef.current = new AbortController();
 
             const response = await fetch(
-                "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/chatbot-response",
+                "https://exn01sk1s7.execute-api.ap-south-1.amazonaws.com/prod/chatbot-response",
                 {
                     method: "POST",
                     body: formData,

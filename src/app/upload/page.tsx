@@ -61,7 +61,7 @@ export default function UploadPage() {
 
         try {
             const response = await fetch(
-                "https://w5s8ggat48.execute-api.ap-south-1.amazonaws.com/prod/upload-data",
+                "https://exn01sk1s7.execute-api.ap-south-1.amazonaws.com/prod/upload-data",
                 {
                     method: "POST",
                     body: formData,

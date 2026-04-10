@@ -1,6 +1,6 @@
  🌊 FloatChat - AI-Powered Ocean Data Exploration
 
-**🔴 Live Demo:** [FloatChat Web App](http://floatchat-frontend.s3-website.ap-south-1.amazonaws.com) *(Hosted on Amazon S3)*
+**🔴 Live Demo:** [FloatChat Web App](https://d1wndp77jzbix4.cloudfront.net) *(Hosted on Amazon S3)*
 
 **FloatChat** is an advanced ocean analytics platform designed to transform oceanographic research. By combining **interactive 3D visualization** with **AI-driven natural language processing**, FloatChat allows researchers and enthusiasts to explore complex ARGO float data, visualize global ocean monitoring networks, and uncover insights through simple conversation.
 

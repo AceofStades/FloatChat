@@ -5,7 +5,7 @@ from datetime import datetime
 import boto3
 
 REGION = os.getenv("AWS_REGION", "ap-south-1")
-BUCKET_NAME = "floatchat-user-data-121834500644"
+BUCKET_NAME = "floatchat-user-data-328879699877"
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
 s3 = boto3.client("s3", region_name=REGION)

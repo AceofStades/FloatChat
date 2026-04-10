@@ -39,7 +39,7 @@ Create a distribution pointing to the S3 bucket's website endpoint.
 
 ```bash
 aws cloudfront create-distribution \
-    --origin-domain-name floatchat-frontend.s3-website.ap-south-1.amazonaws.com \
+    --origin-domain-name floatchat-frontend-328879699877.s3-website.ap-south-1.amazonaws.com \
     --default-root-object index.html
 ```
 

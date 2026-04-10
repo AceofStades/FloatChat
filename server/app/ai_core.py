@@ -9,7 +9,7 @@ import requests
 def get_ollama_embedding(text: str) -> np.ndarray:
     try:
         response = requests.post(
-            "http://3.6.244.247:11434/api/embeddings",
+            "http://15.207.52.175:11434/api/embeddings",
             json={"model": "nomic-embed-text", "prompt": text},
             timeout=30,
         )
@@ -26,7 +26,7 @@ def _call_ollama_generate(
 ):
     try:
         response = requests.post(
-            "http://3.6.244.247:11434/api/generate",
+            "http://15.207.52.175:11434/api/generate",
             json={
                 "model": model,
                 "system": system_message,
